@@ -182,6 +182,7 @@ impl KeyboardManager {
         }
     }
 
+    #[allow(dead_code)]
     fn process_key_event(&self, device_id: &str, key: &str, _is_pressed: bool) -> Option<String> {
         if let Some(device) = self.config.devices.get(device_id) {
             for mapping in &device.mappings {
