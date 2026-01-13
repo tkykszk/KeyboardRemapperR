@@ -61,7 +61,7 @@ jobs:
       - name: Run E2E tests
         run: |
           Write-Host "Running E2E tests..." -ForegroundColor Cyan
-          powershell -ExecutionPolicy Bypass -File tests\e2e_test.ps1
+          powershell -ExecutionPolicy Bypass -File tests\e2e_test_simple.ps1
         shell: pwsh
       
       - name: Upload Windows binary
