@@ -134,7 +134,7 @@ impl KeyboardManager {
     }
 
     fn list_devices(&self) {
-        println!("\n=== Connected Keyboards ===\n");
+        println!("Devices:");
         
         // Simulated device detection
         let devices = vec![
@@ -161,9 +161,8 @@ impl KeyboardManager {
 
     fn show_device(&self, device_id: &str) {
         if let Some(device) = self.config.devices.get(device_id) {
-            println!("\n=== Device: {} ===\n", device.device_name);
-            println!("Device ID: {}", device.device_id);
-            println!("Mappings:\n");
+            println!("Device: {}", device.device_id);
+            println!("Mappings:");
             
             if device.mappings.is_empty() {
                 println!("  No mappings configured");
@@ -222,23 +221,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             manager.config.add_mapping(&device_id, mapping);
             println!(
-                "Mapping set: {} -> {} ({}) for device {}",
+                "Mapping set successfully: {} -> {} ({}) for device {}",
                 from_key, to_key, mode, device_id
             );
         }
         Commands::Remove { device_id, from_key } => {
             manager.config.remove_mapping(&device_id, &from_key);
-            println!("Mapping removed: {} for device {}", from_key, device_id);
+            println!("Mapping removed successfully: {} for device {}", from_key, device_id);
         }
         Commands::Show { device_id } => {
             manager.show_device(&device_id);
         }
         Commands::Save { output } => {
             manager.config.save(&output)?;
+            println!("Configuration saved successfully to {}", output.display());
         }
         Commands::Load { input } => {
             manager.config = Config::load(&input)?;
-            println!("Loaded {} devices", manager.config.devices.len());
+            println!("Configuration loaded successfully from {}", input.display());
         }
         Commands::Start => {
             println!("Starting keyboard remapping service...");
