@@ -2,90 +2,67 @@ name: Build and Test
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:
+    branches: [ main ]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  test-linux:
-    name: Test on Linux
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-      
-      - name: Cache cargo registry
-        uses: actions/cache@v3
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-      
-      - name: Cache cargo index
-        uses: actions/cache@v3
-        with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-      
-      - name: Cache cargo build
-        uses: actions/cache@v3
-        with:
-          path: target
-          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-      
-      - name: Run tests
-        run: cargo test --verbose
-      
-      - name: Build release
-        run: cargo build --release --verbose
-      
-      - name: Check binary
-        run: file target/release/keyboard-remapper-r && ls -lh target/release/keyboard-remapper-r
-
   test-windows:
-    name: Test on Windows
+    name: Windows E2E Tests
     runs-on: windows-latest
+    
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
       
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          targets: x86_64-pc-windows-msvc
+          toolchain: stable
       
       - name: Cache cargo registry
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
       
       - name: Cache cargo index
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-index-
       
       - name: Cache cargo build
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-target-
       
-      - name: Run tests
+      - name: Run unit tests
         run: cargo test --verbose
       
-      - name: Build release
+      - name: Build release binary
         run: cargo build --release --verbose
       
-      - name: Check binary
+      - name: Check binary exists
         run: |
           dir target\release\keyboard-remapper-r.exe
-          powershell -Command "Get-Item target\release\keyboard-remapper-r.exe | Select-Object -Property FullName, @{Name='Size(MB)';Expression={[math]::Round($_.Length/1MB,2)}}"
+          powershell -Command "Get-Item target\release\keyboard-remapper-r.exe | Select-Object -Property FullName, @{Name='Size(KB)';Expression={[math]::Round($_.Length/1KB,2)}}"
+      
+      - name: Run E2E tests
+        run: |
+          Write-Host "Running E2E tests..." -ForegroundColor Cyan
+          powershell -ExecutionPolicy Bypass -File tests\e2e_test.ps1
+        shell: pwsh
       
       - name: Upload Windows binary
         uses: actions/upload-artifact@v4
@@ -93,33 +70,94 @@ jobs:
           name: keyboard-remapper-r-windows
           path: target/release/keyboard-remapper-r.exe
           retention-days: 7
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            test_*.json
+            *.log
+          retention-days: 7
 
-  build-release:
-    name: Build Release
-    runs-on: windows-latest
-    needs: [test-linux, test-windows]
-    if: startsWith(github.ref, 'refs/tags/')
+  test-linux:
+    name: Linux Unit Tests
+    runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
       
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          targets: x86_64-pc-windows-msvc
+          toolchain: stable
+      
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+      
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-index-
+      
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-target-
+      
+      - name: Run unit tests
+        run: cargo test --verbose
       
       - name: Build release binary
         run: cargo build --release --verbose
       
-      - name: Create ZIP archive
-        shell: powershell
+      - name: Check binary size
         run: |
-          $version = (Select-String -Path Cargo.toml -Pattern 'version = "([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
-          Compress-Archive -Path target/release/keyboard-remapper-r.exe -DestinationPath keyboard-remapper-r-$version-win-x64.zip
-          ls -la keyboard-remapper-r-*.zip
+          ls -lh target/release/keyboard-remapper-r
+          du -h target/release/keyboard-remapper-r
+
+  build-release:
+    name: Build Release
+    runs-on: windows-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test-windows, test-linux]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
       
-      - name: Upload Release
-        uses: softprops/action-gh-release@v1
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          files: keyboard-remapper-r-*.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          toolchain: stable
+      
+      - name: Build release binary
+        run: cargo build --release --verbose
+      
+      - name: Create release archive
+        run: |
+          $version = "${{ github.ref_name }}"
+          $archiveName = "KeyboardRemapperR-$version-win-x64.zip"
+          Compress-Archive -Path target\release\keyboard-remapper-r.exe -DestinationPath $archiveName
+          Write-Host "Created archive: $archiveName"
+        shell: pwsh
+      
+      - name: Upload release archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-archive
+          path: KeyboardRemapperR-*.zip
+          retention-days: 30
