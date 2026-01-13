@@ -56,7 +56,7 @@ try {
 # Test 2: Set key mapping (remap mode)
 Write-Host "`n[Test 2] Set key mapping (remap mode)" -ForegroundColor Yellow
 try {
-    $output = & $BinaryPath set "04FE:0021" "CapsLock" "LCtrl" "--mode" "remap" 2>&1 | Out-String
+    $output = & $BinaryPath set "04FE:0021" "CapsLock" "LCtrl" --mode remap 2>&1 | Out-String
     $exitCode = $LASTEXITCODE
     
     if ($exitCode -eq 0 -and $output -match "Mapping set successfully") {
@@ -71,10 +71,10 @@ try {
 # Test 3: Set key mapping (swap mode)
 Write-Host "`n[Test 3] Set key mapping (swap mode)" -ForegroundColor Yellow
 try {
-    $output1 = & $BinaryPath set "04FE:0021" "CapsLock" "LCtrl" "--mode" "swap" 2>&1 | Out-String
+    $output1 = & $BinaryPath set "04FE:0021" "CapsLock" "LCtrl" --mode swap 2>&1 | Out-String
     $exitCode1 = $LASTEXITCODE
     
-    $output2 = & $BinaryPath set "04FE:0021" "LCtrl" "CapsLock" "--mode" "swap" 2>&1 | Out-String
+    $output2 = & $BinaryPath set "04FE:0021" "LCtrl" "CapsLock" --mode swap 2>&1 | Out-String
     $exitCode2 = $LASTEXITCODE
     
     if ($exitCode1 -eq 0 -and $exitCode2 -eq 0 -and $output1 -match "Mapping set successfully" -and $output2 -match "Mapping set successfully") {
@@ -105,7 +105,7 @@ try {
 Write-Host "`n[Test 5] Save configuration" -ForegroundColor Yellow
 $TestConfigPath = "test_config.json"
 try {
-    $output = & $BinaryPath save "--output" $TestConfigPath 2>&1 | Out-String
+    $output = & $BinaryPath save --output $TestConfigPath 2>&1 | Out-String
     $exitCode = $LASTEXITCODE
     
     if ($exitCode -eq 0 -and (Test-Path $TestConfigPath)) {
@@ -126,7 +126,7 @@ try {
 Write-Host "`n[Test 6] Load configuration" -ForegroundColor Yellow
 try {
     if (Test-Path $TestConfigPath) {
-        $output = & $BinaryPath load "--input" $TestConfigPath 2>&1 | Out-String
+        $output = & $BinaryPath load --input $TestConfigPath 2>&1 | Out-String
         $exitCode = $LASTEXITCODE
         
         if ($exitCode -eq 0 -and $output -match "Configuration loaded successfully") {
