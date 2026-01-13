@@ -5,7 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 
 #[cfg(target_os = "windows")]
-use winapi::shared::minwindef::{LPARAM, LRESULT, UINT, WPARAM};
+use winapi::shared::minwindef::{LPARAM, UINT};
 #[cfg(target_os = "windows")]
 use winapi::shared::windef::HWND;
 #[cfg(target_os = "windows")]
@@ -152,16 +152,19 @@ impl Config {
 }
 
 #[cfg(target_os = "windows")]
+#[allow(dead_code)]
 struct RawInputHandler {
     config: Config,
 }
 
 #[cfg(target_os = "windows")]
 impl RawInputHandler {
+    #[allow(dead_code)]
     fn new(config: Config) -> Self {
         RawInputHandler { config }
     }
 
+    #[allow(dead_code)]
     unsafe fn register_raw_input_devices(&self, hwnd: HWND) -> Result<(), String> {
         let mut devices = [RAWINPUTDEVICE {
             usUsagePage: 0x01, // Generic Desktop Controls
@@ -183,6 +186,7 @@ impl RawInputHandler {
         }
     }
 
+    #[allow(dead_code)]
     unsafe fn process_raw_input(&mut self, lparam: LPARAM) -> Option<String> {
         let mut size: UINT = 0;
         
@@ -219,7 +223,7 @@ impl RawInputHandler {
         if raw_input.header.dwType == RIM_TYPEKEYBOARD {
             let keyboard = raw_input.data.keyboard();
             let vkey = keyboard.VKey;
-            let scancode = keyboard.MakeCode;
+            let _scancode = keyboard.MakeCode;
             let flags = keyboard.Flags;
             
             // Get device handle (simplified - in real implementation, you'd extract VID/PID)
