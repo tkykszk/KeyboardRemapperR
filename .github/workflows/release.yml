@@ -74,7 +74,7 @@ jobs:
           Copy-Item "README.md" "$packageName\"
           
           # Create sample config
-          @"
+          $configContent = @'
 {
   "devices": {
     "04FE:0021": {
@@ -88,7 +88,8 @@ jobs:
     }
   }
 }
-"@ | Out-File -FilePath "$packageName\config.sample.json" -Encoding utf8
+'@
+          $configContent | Out-File -FilePath "$packageName\config.sample.json" -Encoding utf8
           
           # Create ZIP
           Compress-Archive -Path $packageName -DestinationPath "$packageName.zip"
