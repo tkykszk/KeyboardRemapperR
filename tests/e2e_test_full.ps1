@@ -56,7 +56,7 @@ try {
 # Test 2: Set key mapping (remap mode - CapsLock -> LCtrl)
 Write-Host "`n[Test 2] Set key mapping (remap mode)" -ForegroundColor Yellow
 try {
-    $output = & $BinaryPath set 04FE:0021 CapsLock LCtrl --mode remap 2>&1 | Out-String
+    $output = & $BinaryPath set 04FE:0021 CapsLock LCtrl 2>&1 | Out-String
     $exitCode = $LASTEXITCODE
     
     if ($exitCode -eq 0 -and $output -match "Mapping set successfully") {
@@ -75,10 +75,10 @@ try {
     & $BinaryPath remove 04FE:0021 CapsLock 2>&1 | Out-Null
     
     # Set swap mappings
-    $output1 = & $BinaryPath set 04FE:0021 CapsLock LCtrl --mode swap 2>&1 | Out-String
+    $output1 = & $BinaryPath set 04FE:0021 CapsLock LCtrl 2>&1 | Out-String
     $exitCode1 = $LASTEXITCODE
     
-    $output2 = & $BinaryPath set 04FE:0021 LCtrl CapsLock --mode swap 2>&1 | Out-String
+    $output2 = & $BinaryPath set 04FE:0021 LCtrl CapsLock 2>&1 | Out-String
     $exitCode2 = $LASTEXITCODE
     
     if ($exitCode1 -eq 0 -and $exitCode2 -eq 0 -and $output1 -match "Mapping set successfully" -and $output2 -match "Mapping set successfully") {
@@ -97,7 +97,7 @@ try {
     & $BinaryPath remove 04FE:0021 CapsLock 2>&1 | Out-Null
     & $BinaryPath remove 04FE:0021 LCtrl 2>&1 | Out-Null
     
-    $output = & $BinaryPath set 04FE:0021 CapsLock None --mode disable 2>&1 | Out-String
+    $output = & $BinaryPath set 04FE:0021 CapsLock None 2>&1 | Out-String
     $exitCode = $LASTEXITCODE
     
     if ($exitCode -eq 0 -and $output -match "Mapping set successfully") {
