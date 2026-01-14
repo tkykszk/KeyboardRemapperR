@@ -36,6 +36,36 @@ use winapi::um::libloaderapi::GetModuleHandleW;
 use winapi::shared::minwindef::{LRESULT, WPARAM};
 #[cfg(target_os = "windows")]
 use std::collections::HashMap;
+#[cfg(target_os = "windows")]
+use std::sync::{Arc, Mutex};
+
+#[cfg(target_os = "windows")]
+static mut GLOBAL_HANDLER: Option<Arc<Mutex<RawInputHandler>>> = None;
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn window_proc(
+    hwnd: HWND,
+    msg: UINT,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    match msg {
+        WM_INPUT => {
+            // Process raw input
+            if let Some(handler) = &GLOBAL_HANDLER {
+                if let Ok(mut handler) = handler.lock() {
+                    handler.process_raw_input(lparam);
+                }
+            }
+            0
+        }
+        WM_DESTROY => {
+            PostQuitMessage(0);
+            0
+        }
+        _ => DefWindowProcW(hwnd, msg, wparam, lparam),
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "KeyboardRemapperR")]
@@ -188,13 +218,28 @@ struct KeyboardDeviceInfo {
 #[allow(dead_code)]
 struct RawInputHandler {
     config: Config,
+    device_map: HashMap<isize, String>, // Map device handle to device_id (VID:PID)
 }
 
 #[cfg(target_os = "windows")]
 impl RawInputHandler {
     #[allow(dead_code)]
     fn new(config: Config) -> Self {
-        RawInputHandler { config }
+        let mut handler = RawInputHandler {
+            config,
+            device_map: HashMap::new(),
+        };
+        
+        // Initialize device map
+        unsafe {
+            if let Ok(devices) = Self::list_keyboard_devices() {
+                for device in devices {
+                    handler.device_map.insert(device.handle as isize, device.device_id);
+                }
+            }
+        }
+        
+        handler
     }
 
     /// Create VK code to key name mapping
@@ -484,8 +529,14 @@ impl RawInputHandler {
             let _scancode = keyboard.MakeCode;
             let flags = keyboard.Flags;
             
-            // Get device handle (simplified - in real implementation, you'd extract VID/PID)
-            let device_id = "04FE:0021"; // Placeholder
+            // Get device handle from raw input
+            let device_handle = raw_input.header.hDevice as isize;
+            
+            // Look up device ID from device map
+            let device_id = self.device_map
+                .get(&device_handle)
+                .map(|s| s.as_str())
+                .unwrap_or("UNKNOWN");
             
             // Convert virtual key code to key name
             let key_name = Self::vk_to_key_name(vkey as i32);
@@ -498,6 +549,88 @@ impl RawInputHandler {
         }
 
         None
+    }
+
+    /// Run the message loop for raw input processing
+    #[allow(dead_code)]
+    unsafe fn run_message_loop(config: Config) -> Result<(), String> {
+        // Store handler in global variable
+        GLOBAL_HANDLER = Some(Arc::new(Mutex::new(RawInputHandler::new(config))));
+
+        // Get module handle
+        let h_instance = GetModuleHandleW(std::ptr::null());
+        if h_instance.is_null() {
+            return Err("Failed to get module handle".to_string());
+        }
+
+        // Create window class name
+        let class_name: Vec<u16> = "KeyboardRemapperR\0"
+            .encode_utf16()
+            .collect();
+
+        // Register window class
+        let wnd_class = WNDCLASSW {
+            style: 0,
+            lpfnWndProc: Some(window_proc),
+            cbClsExtra: 0,
+            cbWndExtra: 0,
+            hInstance: h_instance,
+            hIcon: std::ptr::null_mut(),
+            hCursor: std::ptr::null_mut(),
+            hbrBackground: std::ptr::null_mut(),
+            lpszMenuName: std::ptr::null(),
+            lpszClassName: class_name.as_ptr(),
+        };
+
+        if RegisterClassW(&wnd_class) == 0 {
+            return Err("Failed to register window class".to_string());
+        }
+
+        // Create hidden window
+        let window_name: Vec<u16> = "KeyboardRemapperR Hidden Window\0"
+            .encode_utf16()
+            .collect();
+
+        let hwnd = CreateWindowExW(
+            0,
+            class_name.as_ptr(),
+            window_name.as_ptr(),
+            WS_OVERLAPPEDWINDOW,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            h_instance,
+            std::ptr::null_mut(),
+        );
+
+        if hwnd.is_null() {
+            return Err("Failed to create window".to_string());
+        }
+
+        // Register for raw input
+        if let Some(handler) = &GLOBAL_HANDLER {
+            if let Ok(handler) = handler.lock() {
+                handler.register_raw_input_devices(hwnd)?;
+            }
+        }
+
+        println!("Message loop started. Press Ctrl+C to stop.");
+
+        // Message loop
+        let mut msg: MSG = std::mem::zeroed();
+        loop {
+            let result = GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0);
+            if result == 0 || result == -1 {
+                break;
+            }
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+
+        Ok(())
     }
 }
 
@@ -594,15 +727,18 @@ fn main() {
             println!("Starting keyboard remapping service...");
             println!("Note: This requires administrator privileges on Windows.");
             println!("Raw Input API integration is active.");
+            println!("");
             
-            // In a real implementation, this would:
-            // 1. Create a hidden window to receive raw input messages
-            // 2. Register for raw input devices
-            // 3. Run a message loop to process keyboard events
-            // 4. Apply key mappings based on device ID
-            
-            println!("Service started. Press Ctrl+C to stop.");
-            // Placeholder - actual implementation would run indefinitely
+            // Run the message loop
+            match unsafe { RawInputHandler::run_message_loop(config) } {
+                Ok(()) => {
+                    println!("Service stopped successfully.");
+                }
+                Err(e) => {
+                    eprintln!("Error running service: {}", e);
+                    std::process::exit(1);
+                }
+            }
         }
         Commands::Stop => {
             println!("Stopping keyboard remapping service...");
