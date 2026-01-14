@@ -10,9 +10,13 @@ use winapi::shared::minwindef::{LPARAM, UINT};
 use winapi::shared::windef::HWND;
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::{
-    GetRawInputData, RegisterRawInputDevices, RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER,
-    RIDEV_INPUTSINK, RID_INPUT, RIM_TYPEKEYBOARD,
+    GetRawInputData, GetRawInputDeviceInfoW, GetRawInputDeviceList, RegisterRawInputDevices,
+    RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER, RIDEV_INPUTSINK, RID_DEVICE_INFO,
+    RID_DEVICE_INFO_HID, RID_DEVICE_INFO_KEYBOARD, RID_INPUT, RIDI_DEVICEINFO, RIDI_DEVICENAME,
+    RIM_TYPEHID, RIM_TYPEKEYBOARD, RIM_TYPEMOUSE,
 };
+#[cfg(target_os = "windows")]
+use winapi::shared::ntdef::HANDLE;
 
 #[derive(Parser)]
 #[command(name = "KeyboardRemapperR")]
@@ -152,6 +156,16 @@ impl Config {
 }
 
 #[cfg(target_os = "windows")]
+#[derive(Debug, Clone)]
+struct KeyboardDeviceInfo {
+    handle: HANDLE,
+    device_name: String,
+    vid: u16,
+    pid: u16,
+    device_id: String, // Format: "VID:PID"
+}
+
+#[cfg(target_os = "windows")]
 #[allow(dead_code)]
 struct RawInputHandler {
     config: Config,
@@ -162,6 +176,128 @@ impl RawInputHandler {
     #[allow(dead_code)]
     fn new(config: Config) -> Self {
         RawInputHandler { config }
+    }
+
+    /// List all connected keyboard devices
+    #[allow(dead_code)]
+    unsafe fn list_keyboard_devices() -> Result<Vec<KeyboardDeviceInfo>, String> {
+        let mut devices = Vec::new();
+        let mut device_count: UINT = 0;
+
+        // First call: get the number of devices
+        let result = GetRawInputDeviceList(
+            std::ptr::null_mut(),
+            &mut device_count,
+            std::mem::size_of::<winapi::um::winuser::RAWINPUTDEVICELIST>() as UINT,
+        );
+
+        if result == u32::MAX {
+            return Err("Failed to get device count".to_string());
+        }
+
+        if device_count == 0 {
+            return Ok(devices);
+        }
+
+        // Allocate buffer for device list
+        let mut device_list: Vec<winapi::um::winuser::RAWINPUTDEVICELIST> =
+            vec![std::mem::zeroed(); device_count as usize];
+
+        // Second call: get the device list
+        let result = GetRawInputDeviceList(
+            device_list.as_mut_ptr(),
+            &mut device_count,
+            std::mem::size_of::<winapi::um::winuser::RAWINPUTDEVICELIST>() as UINT,
+        );
+
+        if result == u32::MAX {
+            return Err("Failed to get device list".to_string());
+        }
+
+        // Filter keyboard devices and get their info
+        for device in device_list.iter().take(device_count as usize) {
+            if device.dwType == RIM_TYPEKEYBOARD {
+                if let Ok(device_info) = Self::get_device_info(device.hDevice) {
+                    devices.push(device_info);
+                }
+            }
+        }
+
+        Ok(devices)
+    }
+
+    /// Get detailed information about a device
+    #[allow(dead_code)]
+    unsafe fn get_device_info(handle: HANDLE) -> Result<KeyboardDeviceInfo, String> {
+        // Get device name
+        let mut name_size: UINT = 0;
+        GetRawInputDeviceInfoW(handle, RIDI_DEVICENAME, std::ptr::null_mut(), &mut name_size);
+
+        if name_size == 0 {
+            return Err("Failed to get device name size".to_string());
+        }
+
+        let mut name_buffer: Vec<u16> = vec![0; name_size as usize];
+        let result = GetRawInputDeviceInfoW(
+            handle,
+            RIDI_DEVICENAME,
+            name_buffer.as_mut_ptr() as *mut _,
+            &mut name_size,
+        );
+
+        if result == u32::MAX {
+            return Err("Failed to get device name".to_string());
+        }
+
+        let device_name = String::from_utf16_lossy(&name_buffer)
+            .trim_end_matches('\0')
+            .to_string();
+
+        // Get device info (for VID/PID)
+        let mut info_size: UINT = std::mem::size_of::<RID_DEVICE_INFO>() as UINT;
+        let mut device_info: RID_DEVICE_INFO = std::mem::zeroed();
+        device_info.cbSize = info_size;
+
+        let result = GetRawInputDeviceInfoW(
+            handle,
+            RIDI_DEVICEINFO,
+            &mut device_info as *mut _ as *mut _,
+            &mut info_size,
+        );
+
+        if result == u32::MAX {
+            return Err("Failed to get device info".to_string());
+        }
+
+        // Extract VID/PID from device name (format: \\?\\HID#VID_XXXX&PID_YYYY#...)
+        let (vid, pid) = Self::parse_vid_pid(&device_name).unwrap_or((0, 0));
+        let device_id = format!("{:04X}:{:04X}", vid, pid);
+
+        Ok(KeyboardDeviceInfo {
+            handle,
+            device_name,
+            vid,
+            pid,
+            device_id,
+        })
+    }
+
+    /// Parse VID and PID from device name string
+    #[allow(dead_code)]
+    fn parse_vid_pid(device_name: &str) -> Option<(u16, u16)> {
+        // Device name format: \\?\\HID#VID_XXXX&PID_YYYY#...
+        let upper = device_name.to_uppercase();
+        
+        let vid_pos = upper.find("VID_")?;
+        let pid_pos = upper.find("PID_")?;
+        
+        let vid_str = &upper[vid_pos + 4..vid_pos + 8];
+        let pid_str = &upper[pid_pos + 4..pid_pos + 8];
+        
+        let vid = u16::from_str_radix(vid_str, 16).ok()?;
+        let pid = u16::from_str_radix(pid_str, 16).ok()?;
+        
+        Some((vid, pid))
     }
 
     #[allow(dead_code)]
@@ -249,12 +385,41 @@ fn main() {
 
     match cli.command {
         Commands::List => {
-            println!("Devices:");
-            if config.devices.is_empty() {
-                println!("  (No devices configured)");
-            } else {
-                for device in &config.devices {
-                    println!("  - {} ({} mappings)", device.device_id, device.mappings.len());
+            #[cfg(target_os = "windows")]
+            {
+                println!("Connected Keyboards:");
+                match unsafe { RawInputHandler::list_keyboard_devices() } {
+                    Ok(devices) => {
+                        if devices.is_empty() {
+                            println!("  (No keyboard devices detected)");
+                        } else {
+                            for device in &devices {
+                                let configured = config.devices.iter()
+                                    .any(|d| d.device_id == device.device_id);
+                                let status = if configured { "[Configured]" } else { "" };
+                                println!("  - {} {} {}", device.device_id, device.device_name, status);
+                                if let Some(dev_config) = config.devices.iter()
+                                    .find(|d| d.device_id == device.device_id) {
+                                    println!("    Mappings: {}", dev_config.mappings.len());
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error listing devices: {}", e);
+                    }
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                println!("Device detection is only supported on Windows.");
+                println!("\nConfigured Devices:");
+                if config.devices.is_empty() {
+                    println!("  (No devices configured)");
+                } else {
+                    for device in &config.devices {
+                        println!("  - {} ({} mappings)", device.device_id, device.mappings.len());
+                    }
                 }
             }
         }

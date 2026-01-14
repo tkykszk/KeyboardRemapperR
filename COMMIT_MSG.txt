@@ -1,0 +1,41 @@
+feat: Implement device detection and VID/PID extraction (Phase 1)
+
+Implemented Task 1.1-1.4 from IMPLEMENTATION_TASKS.md:
+
+## Changes
+
+### New Features
+- Added `KeyboardDeviceInfo` struct to hold device information
+- Implemented `list_keyboard_devices()` using `GetRawInputDeviceList` API
+- Implemented `get_device_info()` using `GetRawInputDeviceInfoW` API
+- Implemented `parse_vid_pid()` to extract VID/PID from device name
+- Updated `list` command to show actual connected keyboards
+
+### API Integration
+- Added Windows API imports:
+  - `GetRawInputDeviceList`: Enumerate raw input devices
+  - `GetRawInputDeviceInfoW`: Get device information
+  - `RID_DEVICE_INFO`: Device information structure
+  - `RIDI_DEVICENAME`, `RIDI_DEVICEINFO`: Device info types
+
+### Functionality
+- `list` command now shows:
+  - Device ID (VID:PID format)
+  - Device name (full path)
+  - Configuration status ([Configured] marker)
+  - Number of mappings for configured devices
+
+### Platform Support
+- Windows: Full device detection support
+- Linux: Graceful fallback with message
+
+## Testing
+- All existing unit tests pass (3/3)
+- Compiles without errors
+- Ready for Windows E2E testing
+
+## Next Steps
+- Phase 2: Implement keyboard input hook with message loop
+- Phase 3: Implement key input suppression and sending
+
+Related: #1 (Initial alpha release)
