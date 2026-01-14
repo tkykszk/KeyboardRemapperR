@@ -999,8 +999,71 @@ fn get_service_status() -> String {
 }
 
 #[cfg(target_os = "windows")]
+fn watch_config_file(config_path: &std::path::Path) -> Result<notify::RecommendedWatcher, Box<dyn std::error::Error>> {
+    use notify::{Watcher, RecursiveMode, Event};
+    use std::sync::mpsc::channel;
+    
+    let (tx, rx) = channel();
+    
+    let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
+        if let Ok(event) = res {
+            if event.kind.is_modify() {
+                tx.send(()).ok();
+            }
+        }
+    })?;
+    
+    watcher.watch(config_path, RecursiveMode::NonRecursive)?;
+    
+    // Spawn a thread to handle config reload
+    let config_path = config_path.to_path_buf();
+    std::thread::spawn(move || {
+        loop {
+            if rx.recv().is_ok() {
+                println!("Config file changed, reloading...");
+                std::thread::sleep(std::time::Duration::from_millis(100)); // Debounce
+                
+                match load_config(&config_path) {
+                    Ok(new_config) => {
+                        // Update global handler
+                        if let Some(handler) = unsafe { GLOBAL_HANDLER.as_ref() } {
+                            if let Ok(mut h) = handler.lock() {
+                                h.config = new_config;
+                                println!("Config reloaded successfully.");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error reloading config: {}", e);
+                    }
+                }
+            }
+        }
+    });
+    
+    Ok(watcher)
+}
+
+#[cfg(target_os = "windows")]
 fn run_main_loop(shutdown_rx: std::sync::mpsc::Receiver<()>) -> Result<(), Box<dyn std::error::Error>> {
     let config = load_config_or_default();
+    
+    // Start watching config file
+    let config_path = std::path::PathBuf::from("config.json");
+    let _watcher = if config_path.exists() {
+        match watch_config_file(&config_path) {
+            Ok(w) => {
+                println!("Watching config file for changes: {}", config_path.display());
+                Some(w)
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to start config file watcher: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
     
     // Install keyboard hook
     unsafe { install_keyboard_hook()? };
