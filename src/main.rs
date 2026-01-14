@@ -17,6 +17,25 @@ use winapi::um::winuser::{
 };
 #[cfg(target_os = "windows")]
 use winapi::shared::ntdef::HANDLE;
+#[cfg(target_os = "windows")]
+use winapi::um::winuser::{
+    VK_BACK, VK_TAB, VK_RETURN, VK_SHIFT, VK_CONTROL, VK_MENU, VK_CAPITAL, VK_ESCAPE,
+    VK_SPACE, VK_PRIOR, VK_NEXT, VK_END, VK_HOME, VK_LEFT, VK_UP, VK_RIGHT, VK_DOWN,
+    VK_INSERT, VK_DELETE, VK_LWIN, VK_RWIN, VK_NUMPAD0, VK_NUMPAD1, VK_NUMPAD2,
+    VK_NUMPAD3, VK_NUMPAD4, VK_NUMPAD5, VK_NUMPAD6, VK_NUMPAD7, VK_NUMPAD8, VK_NUMPAD9,
+    VK_MULTIPLY, VK_ADD, VK_SUBTRACT, VK_DECIMAL, VK_DIVIDE, VK_F1, VK_F2, VK_F3, VK_F4,
+    VK_F5, VK_F6, VK_F7, VK_F8, VK_F9, VK_F10, VK_F11, VK_F12, VK_NUMLOCK, VK_SCROLL,
+    VK_LSHIFT, VK_RSHIFT, VK_LCONTROL, VK_RCONTROL, VK_LMENU, VK_RMENU,
+    RegisterClassW, CreateWindowExW, DefWindowProcW, GetMessageW, TranslateMessage,
+    DispatchMessageW, PostQuitMessage, WM_INPUT, WM_DESTROY, WNDCLASSW, MSG,
+    CW_USEDEFAULT, WS_OVERLAPPEDWINDOW,
+};
+#[cfg(target_os = "windows")]
+use winapi::um::libloaderapi::GetModuleHandleW;
+#[cfg(target_os = "windows")]
+use winapi::shared::minwindef::{LRESULT, WPARAM};
+#[cfg(target_os = "windows")]
+use std::collections::HashMap;
 
 #[derive(Parser)]
 #[command(name = "KeyboardRemapperR")]
@@ -176,6 +195,109 @@ impl RawInputHandler {
     #[allow(dead_code)]
     fn new(config: Config) -> Self {
         RawInputHandler { config }
+    }
+
+    /// Create VK code to key name mapping
+    fn create_vk_to_name_map() -> HashMap<i32, String> {
+        let mut map = HashMap::new();
+        
+        // Alphanumeric keys (0x30-0x39, 0x41-0x5A)
+        for c in b'0'..=b'9' {
+            map.insert(c as i32, (c as char).to_string());
+        }
+        for c in b'A'..=b'Z' {
+            map.insert(c as i32, (c as char).to_string());
+        }
+        
+        // Special keys
+        map.insert(VK_BACK as i32, "Backspace".to_string());
+        map.insert(VK_TAB as i32, "Tab".to_string());
+        map.insert(VK_RETURN as i32, "Enter".to_string());
+        map.insert(VK_SHIFT as i32, "Shift".to_string());
+        map.insert(VK_CONTROL as i32, "Ctrl".to_string());
+        map.insert(VK_MENU as i32, "Alt".to_string());
+        map.insert(VK_CAPITAL as i32, "CapsLock".to_string());
+        map.insert(VK_ESCAPE as i32, "Escape".to_string());
+        map.insert(VK_SPACE as i32, "Space".to_string());
+        map.insert(VK_PRIOR as i32, "PageUp".to_string());
+        map.insert(VK_NEXT as i32, "PageDown".to_string());
+        map.insert(VK_END as i32, "End".to_string());
+        map.insert(VK_HOME as i32, "Home".to_string());
+        map.insert(VK_LEFT as i32, "Left".to_string());
+        map.insert(VK_UP as i32, "Up".to_string());
+        map.insert(VK_RIGHT as i32, "Right".to_string());
+        map.insert(VK_DOWN as i32, "Down".to_string());
+        map.insert(VK_INSERT as i32, "Insert".to_string());
+        map.insert(VK_DELETE as i32, "Delete".to_string());
+        
+        // Windows keys
+        map.insert(VK_LWIN as i32, "LWin".to_string());
+        map.insert(VK_RWIN as i32, "RWin".to_string());
+        
+        // Numpad keys
+        map.insert(VK_NUMPAD0 as i32, "Numpad0".to_string());
+        map.insert(VK_NUMPAD1 as i32, "Numpad1".to_string());
+        map.insert(VK_NUMPAD2 as i32, "Numpad2".to_string());
+        map.insert(VK_NUMPAD3 as i32, "Numpad3".to_string());
+        map.insert(VK_NUMPAD4 as i32, "Numpad4".to_string());
+        map.insert(VK_NUMPAD5 as i32, "Numpad5".to_string());
+        map.insert(VK_NUMPAD6 as i32, "Numpad6".to_string());
+        map.insert(VK_NUMPAD7 as i32, "Numpad7".to_string());
+        map.insert(VK_NUMPAD8 as i32, "Numpad8".to_string());
+        map.insert(VK_NUMPAD9 as i32, "Numpad9".to_string());
+        map.insert(VK_MULTIPLY as i32, "NumpadMultiply".to_string());
+        map.insert(VK_ADD as i32, "NumpadAdd".to_string());
+        map.insert(VK_SUBTRACT as i32, "NumpadSubtract".to_string());
+        map.insert(VK_DECIMAL as i32, "NumpadDecimal".to_string());
+        map.insert(VK_DIVIDE as i32, "NumpadDivide".to_string());
+        
+        // Function keys
+        map.insert(VK_F1 as i32, "F1".to_string());
+        map.insert(VK_F2 as i32, "F2".to_string());
+        map.insert(VK_F3 as i32, "F3".to_string());
+        map.insert(VK_F4 as i32, "F4".to_string());
+        map.insert(VK_F5 as i32, "F5".to_string());
+        map.insert(VK_F6 as i32, "F6".to_string());
+        map.insert(VK_F7 as i32, "F7".to_string());
+        map.insert(VK_F8 as i32, "F8".to_string());
+        map.insert(VK_F9 as i32, "F9".to_string());
+        map.insert(VK_F10 as i32, "F10".to_string());
+        map.insert(VK_F11 as i32, "F11".to_string());
+        map.insert(VK_F12 as i32, "F12".to_string());
+        
+        // Lock keys
+        map.insert(VK_NUMLOCK as i32, "NumLock".to_string());
+        map.insert(VK_SCROLL as i32, "ScrollLock".to_string());
+        
+        // Left/Right specific keys
+        map.insert(VK_LSHIFT as i32, "LShift".to_string());
+        map.insert(VK_RSHIFT as i32, "RShift".to_string());
+        map.insert(VK_LCONTROL as i32, "LCtrl".to_string());
+        map.insert(VK_RCONTROL as i32, "RCtrl".to_string());
+        map.insert(VK_LMENU as i32, "LAlt".to_string());
+        map.insert(VK_RMENU as i32, "RAlt".to_string());
+        
+        map
+    }
+
+    /// Convert VK code to key name
+    fn vk_to_key_name(vk_code: i32) -> String {
+        let map = Self::create_vk_to_name_map();
+        map.get(&vk_code)
+            .cloned()
+            .unwrap_or_else(|| format!("VK_{}", vk_code))
+    }
+
+    /// Create key name to VK code mapping
+    fn create_name_to_vk_map() -> HashMap<String, i32> {
+        let vk_to_name = Self::create_vk_to_name_map();
+        vk_to_name.into_iter().map(|(k, v)| (v, k)).collect()
+    }
+
+    /// Convert key name to VK code
+    fn key_name_to_vk(key_name: &str) -> Option<i32> {
+        let map = Self::create_name_to_vk_map();
+        map.get(key_name).copied()
     }
 
     /// List all connected keyboard devices
@@ -365,8 +487,8 @@ impl RawInputHandler {
             // Get device handle (simplified - in real implementation, you'd extract VID/PID)
             let device_id = "04FE:0021"; // Placeholder
             
-            // Convert virtual key code to key name (simplified)
-            let key_name = format!("VK_{}", vkey);
+            // Convert virtual key code to key name
+            let key_name = Self::vk_to_key_name(vkey as i32);
             
             // Check if key is pressed (not released)
             let is_pressed = (flags & 0x01) == 0;

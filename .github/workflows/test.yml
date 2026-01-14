@@ -1,0 +1,156 @@
+name: Phase 3 Tests
+
+on:
+  push:
+    branches: [ main, feature/*, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test-windows:
+    name: Test on Windows
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        components: rustfmt, clippy
+    
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-registry-
+    
+    - name: Cache cargo index
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/git
+        key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-index-
+    
+    - name: Cache target directory
+      uses: actions/cache@v4
+      with:
+        path: target
+        key: ${{ runner.os }}-target-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-target-
+    
+    - name: Check code formatting
+      run: cargo fmt -- --check
+      continue-on-error: true
+    
+    - name: Run clippy
+      run: cargo clippy -- -D warnings
+      continue-on-error: true
+    
+    - name: Build project
+      run: cargo build --verbose
+    
+    - name: Run unit tests
+      run: cargo test --lib --verbose
+    
+    - name: Run integration tests
+      run: cargo test --test e2e_tests --verbose
+      continue-on-error: true
+    
+    - name: Run all tests with script
+      shell: pwsh
+      run: |
+        .\scripts\run_tests.ps1 -GenerateReport -Verbose
+    
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results-windows
+        path: test_results_*.md
+        retention-days: 30
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: keyboard-remapper-r-windows
+        path: target/debug/keyboard-remapper-r.exe
+        retention-days: 7
+
+  build-release:
+    name: Build Release Binary
+    runs-on: windows-latest
+    needs: test-windows
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/feature/'))
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+    
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-registry-
+    
+    - name: Cache cargo index
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/git
+        key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-index-
+    
+    - name: Cache target directory
+      uses: actions/cache@v4
+      with:
+        path: target
+        key: ${{ runner.os }}-target-release-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-target-release-
+    
+    - name: Build release binary
+      run: cargo build --release --verbose
+    
+    - name: Get binary size
+      shell: pwsh
+      run: |
+        $size = (Get-Item target/release/keyboard-remapper-r.exe).Length
+        $sizeKB = [math]::Round($size / 1KB, 2)
+        Write-Host "Binary size: $sizeKB KB"
+        echo "BINARY_SIZE=$sizeKB KB" >> $env:GITHUB_ENV
+    
+    - name: Upload release binary
+      uses: actions/upload-artifact@v4
+      with:
+        name: keyboard-remapper-r-windows-release
+        path: target/release/keyboard-remapper-r.exe
+        retention-days: 30
+    
+    - name: Create release summary
+      shell: pwsh
+      run: |
+        echo "## Build Summary" >> $env:GITHUB_STEP_SUMMARY
+        echo "" >> $env:GITHUB_STEP_SUMMARY
+        echo "- **Platform**: Windows" >> $env:GITHUB_STEP_SUMMARY
+        echo "- **Binary Size**: ${{ env.BINARY_SIZE }}" >> $env:GITHUB_STEP_SUMMARY
+        echo "- **Build Type**: Release" >> $env:GITHUB_STEP_SUMMARY
+        echo "- **Commit**: ${{ github.sha }}" >> $env:GITHUB_STEP_SUMMARY
