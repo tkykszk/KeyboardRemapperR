@@ -148,6 +148,8 @@ enum Commands {
     Start,
     /// Stop the remapping service
     Stop,
+    /// Check service status
+    Status,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -907,6 +909,96 @@ fn run_service() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[cfg(target_os = "windows")]
+fn is_service_installed() -> bool {
+    use std::process::Command;
+    
+    let output = Command::new("sc")
+        .args(&["query", "KeyboardRemapperR"])
+        .output();
+    
+    match output {
+        Ok(output) => output.status.success(),
+        Err(_) => false,
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn is_service_running() -> bool {
+    use std::process::Command;
+    
+    let output = Command::new("sc")
+        .args(&["query", "KeyboardRemapperR"])
+        .output();
+    
+    match output {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            stdout.contains("RUNNING")
+        }
+        Err(_) => false,
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn start_service() -> Result<(), Box<dyn std::error::Error>> {
+    use std::process::Command;
+    
+    let output = Command::new("sc")
+        .args(&["start", "KeyboardRemapperR"])
+        .output()?;
+    
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Failed to start service: {}", stderr).into())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn stop_service() -> Result<(), Box<dyn std::error::Error>> {
+    use std::process::Command;
+    
+    let output = Command::new("sc")
+        .args(&["stop", "KeyboardRemapperR"])
+        .output()?;
+    
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Failed to stop service: {}", stderr).into())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn get_service_status() -> String {
+    use std::process::Command;
+    
+    if !is_service_installed() {
+        return "Not Installed".to_string();
+    }
+    
+    let output = Command::new("sc")
+        .args(&["query", "KeyboardRemapperR"])
+        .output();
+    
+    match output {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if stdout.contains("RUNNING") {
+                "Running".to_string()
+            } else if stdout.contains("STOPPED") {
+                "Stopped".to_string()
+            } else {
+                "Unknown".to_string()
+            }
+        }
+        Err(_) => "Error".to_string(),
+    }
+}
+
+#[cfg(target_os = "windows")]
 fn run_main_loop(shutdown_rx: std::sync::mpsc::Receiver<()>) -> Result<(), Box<dyn std::error::Error>> {
     let config = load_config_or_default();
     
@@ -1034,38 +1126,100 @@ fn main() {
         }
         #[cfg(target_os = "windows")]
         Commands::Start => {
-            println!("Starting keyboard remapping service...");
-            println!("Note: This requires administrator privileges on Windows.");
-            println!("Raw Input API integration is active.");
-            println!("");
-            
-            // Install keyboard hook for key suppression
-            match unsafe { install_keyboard_hook() } {
-                Ok(()) => {
-                    println!("Keyboard hook installed successfully.");
-                }
-                Err(e) => {
-                    eprintln!("Error installing keyboard hook: {}", e);
+            #[cfg(target_os = "windows")]
+            {
+                println!("Starting keyboard remapping service...");
+                
+                if !is_service_installed() {
+                    eprintln!("Error: Service is not installed.");
+                    eprintln!("Please install the service first using:");
+                    eprintln!("  .\\scripts\\install_service.ps1");
                     std::process::exit(1);
+                }
+                
+                if is_service_running() {
+                    println!("Service is already running.");
+                    return;
+                }
+                
+                match start_service() {
+                    Ok(()) => {
+                        println!("Service started successfully.");
+                        println!("Use 'keyboard-remapper-r status' to check service status.");
+                    }
+                    Err(e) => {
+                        eprintln!("Error starting service: {}", e);
+                        eprintln!("Note: This requires administrator privileges.");
+                        std::process::exit(1);
+                    }
                 }
             }
             
-            // Run the message loop
-            match unsafe { RawInputHandler::run_message_loop(config) } {
-                Ok(()) => {
-                    println!("Service stopped successfully.");
-                    unsafe { uninstall_keyboard_hook(); }
-                }
-                Err(e) => {
-                    eprintln!("Error running service: {}", e);
-                    unsafe { uninstall_keyboard_hook(); }
-                    std::process::exit(1);
-                }
+            #[cfg(not(target_os = "windows"))]
+            {
+                eprintln!("Error: Service mode is only supported on Windows.");
+                std::process::exit(1);
             }
         }
         Commands::Stop => {
-            println!("Stopping keyboard remapping service...");
-            println!("Service stopped.");
+            #[cfg(target_os = "windows")]
+            {
+                println!("Stopping keyboard remapping service...");
+                
+                if !is_service_installed() {
+                    eprintln!("Error: Service is not installed.");
+                    std::process::exit(1);
+                }
+                
+                if !is_service_running() {
+                    println!("Service is not running.");
+                    return;
+                }
+                
+                match stop_service() {
+                    Ok(()) => {
+                        println!("Service stopped successfully.");
+                    }
+                    Err(e) => {
+                        eprintln!("Error stopping service: {}", e);
+                        eprintln!("Note: This requires administrator privileges.");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            
+            #[cfg(not(target_os = "windows"))]
+            {
+                eprintln!("Error: Service mode is only supported on Windows.");
+                std::process::exit(1);
+            }
+        }
+        Commands::Status => {
+            #[cfg(target_os = "windows")]
+            {
+                let status = get_service_status();
+                println!("Service Status: {}", status);
+                
+                if status == "Not Installed" {
+                    println!("");
+                    println!("To install the service, run:");
+                    println!("  .\\scripts\\install_service.ps1");
+                } else if status == "Stopped" {
+                    println!("");
+                    println!("To start the service, run:");
+                    println!("  keyboard-remapper-r start");
+                } else if status == "Running" {
+                    println!("");
+                    println!("To stop the service, run:");
+                    println!("  keyboard-remapper-r stop");
+                }
+            }
+            
+            #[cfg(not(target_os = "windows"))]
+            {
+                eprintln!("Error: Service mode is only supported on Windows.");
+                std::process::exit(1);
+            }
         }
     }
 }
