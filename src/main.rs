@@ -1,3 +1,4 @@
+use log::info;
 use clap::{Parser, Subcommand};
 
 #[cfg(target_os = "windows")]
@@ -1029,7 +1030,7 @@ fn watch_config_file(config_path: &std::path::Path) -> Result<notify::Recommende
                         if let Some(handler) = unsafe { GLOBAL_HANDLER.as_ref() } {
                             if let Ok(mut h) = handler.lock() {
                                 h.config = new_config;
-                                println!("Config reloaded successfully.");
+                                info!("Config reloaded successfully"); println!("Config reloaded successfully.");
                             }
                         }
                     }
@@ -1085,7 +1086,50 @@ fn run_main_loop(shutdown_rx: std::sync::mpsc::Receiver<()>) -> Result<(), Box<d
     Ok(())
 }
 
+/// Initialize logger with env_logger
+fn init_logger() {
+    use env_logger::Builder;
+    use log::LevelFilter;
+    use std::io::Write;
+
+    let mut builder = Builder::new();
+    
+    // Set default log level from environment variable or use Info
+    let log_level = std::env::var("RUST_LOG")
+        .unwrap_or_else(|_| "info".to_string());
+    
+    builder
+        .filter_level(match log_level.to_lowercase().as_str() {
+            "trace" => LevelFilter::Trace,
+            "debug" => LevelFilter::Debug,
+            "info" => LevelFilter::Info,
+            "warn" => LevelFilter::Warn,
+            "error" => LevelFilter::Error,
+            _ => LevelFilter::Info,
+        })
+        .format(|buf, record| {
+            writeln!(
+                buf,
+                "[{} {} {}:{}] {}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+                record.level(),
+                record.file().unwrap_or("unknown"),
+                record.line().unwrap_or(0),
+                record.args()
+            )
+        });
+    
+    // Try to initialize logger, ignore if already initialized
+    let _ = builder.try_init();
+}
+
 fn main() {
+    // Initialize logger
+    init_logger();
+    
     #[cfg(target_os = "windows")]
     {
         // Check if running as a service
@@ -1191,7 +1235,7 @@ fn main() {
         Commands::Start => {
             #[cfg(target_os = "windows")]
             {
-                println!("Starting keyboard remapping service...");
+                info!("Starting keyboard remapping service..."); println!("Starting keyboard remapping service...");
                 
                 if !is_service_installed() {
                     eprintln!("Error: Service is not installed.");
@@ -1207,7 +1251,7 @@ fn main() {
                 
                 match start_service() {
                     Ok(()) => {
-                        println!("Service started successfully.");
+                        info!("Service started successfully"); println!("Service started successfully.");
                         println!("Use 'keyboard-remapper-r status' to check service status.");
                     }
                     Err(e) => {
@@ -1227,7 +1271,7 @@ fn main() {
         Commands::Stop => {
             #[cfg(target_os = "windows")]
             {
-                println!("Stopping keyboard remapping service...");
+                info!("Stopping keyboard remapping service..."); println!("Stopping keyboard remapping service...");
                 
                 if !is_service_installed() {
                     eprintln!("Error: Service is not installed.");
@@ -1241,7 +1285,7 @@ fn main() {
                 
                 match stop_service() {
                     Ok(()) => {
-                        println!("Service stopped successfully.");
+                        info!("Service stopped successfully"); println!("Service stopped successfully.");
                     }
                     Err(e) => {
                         eprintln!("Error stopping service: {}", e);
