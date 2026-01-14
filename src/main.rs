@@ -797,4 +797,221 @@ mod tests {
         assert!(config.remove_mapping("04FE:0021", "CapsLock"));
         assert_eq!(config.devices[0].mappings.len(), 0);
     }
+
+    // Phase 2 Tests
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_vk_to_key_name_alphanumeric() {
+        // Test alphanumeric keys
+        assert_eq!(RawInputHandler::vk_to_key_name(0x30), "0");
+        assert_eq!(RawInputHandler::vk_to_key_name(0x39), "9");
+        assert_eq!(RawInputHandler::vk_to_key_name(0x41), "A");
+        assert_eq!(RawInputHandler::vk_to_key_name(0x5A), "Z");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_vk_to_key_name_special_keys() {
+        // Test special keys
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_BACK as i32), "Backspace");
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_TAB as i32), "Tab");
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_RETURN as i32), "Enter");
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_SHIFT as i32), "Shift");
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_CONTROL as i32), "Ctrl");
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_MENU as i32), "Alt");
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_CAPITAL as i32), "CapsLock");
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_ESCAPE as i32), "Escape");
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_SPACE as i32), "Space");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_vk_to_key_name_function_keys() {
+        // Test function keys
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_F1 as i32), "F1");
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_F5 as i32), "F5");
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_F12 as i32), "F12");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_vk_to_key_name_numpad_keys() {
+        // Test numpad keys
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_NUMPAD0 as i32), "Numpad0");
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_NUMPAD5 as i32), "Numpad5");
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_NUMPAD9 as i32), "Numpad9");
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_MULTIPLY as i32), "NumpadMultiply");
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_ADD as i32), "NumpadAdd");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_vk_to_key_name_left_right_keys() {
+        // Test left/right specific keys
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_LSHIFT as i32), "LShift");
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_RSHIFT as i32), "RShift");
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_LCONTROL as i32), "LCtrl");
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_RCONTROL as i32), "RCtrl");
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_LMENU as i32), "LAlt");
+        assert_eq!(RawInputHandler::vk_to_key_name(VK_RMENU as i32), "RAlt");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_vk_to_key_name_unknown() {
+        // Test unknown VK code
+        assert_eq!(RawInputHandler::vk_to_key_name(0xFF), "VK_255");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_key_name_to_vk_alphanumeric() {
+        // Test alphanumeric keys
+        assert_eq!(RawInputHandler::key_name_to_vk("0"), Some(0x30));
+        assert_eq!(RawInputHandler::key_name_to_vk("9"), Some(0x39));
+        assert_eq!(RawInputHandler::key_name_to_vk("A"), Some(0x41));
+        assert_eq!(RawInputHandler::key_name_to_vk("Z"), Some(0x5A));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_key_name_to_vk_special_keys() {
+        // Test special keys
+        assert_eq!(RawInputHandler::key_name_to_vk("Backspace"), Some(VK_BACK as i32));
+        assert_eq!(RawInputHandler::key_name_to_vk("Tab"), Some(VK_TAB as i32));
+        assert_eq!(RawInputHandler::key_name_to_vk("Enter"), Some(VK_RETURN as i32));
+        assert_eq!(RawInputHandler::key_name_to_vk("CapsLock"), Some(VK_CAPITAL as i32));
+        assert_eq!(RawInputHandler::key_name_to_vk("Escape"), Some(VK_ESCAPE as i32));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_key_name_to_vk_left_right_keys() {
+        // Test left/right specific keys
+        assert_eq!(RawInputHandler::key_name_to_vk("LShift"), Some(VK_LSHIFT as i32));
+        assert_eq!(RawInputHandler::key_name_to_vk("RShift"), Some(VK_RSHIFT as i32));
+        assert_eq!(RawInputHandler::key_name_to_vk("LCtrl"), Some(VK_LCONTROL as i32));
+        assert_eq!(RawInputHandler::key_name_to_vk("RCtrl"), Some(VK_RCONTROL as i32));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_key_name_to_vk_unknown() {
+        // Test unknown key name
+        assert_eq!(RawInputHandler::key_name_to_vk("UnknownKey"), None);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_vk_conversion_roundtrip() {
+        // Test roundtrip conversion: VK -> Name -> VK
+        let test_vks = vec![
+            VK_BACK as i32,
+            VK_TAB as i32,
+            VK_RETURN as i32,
+            VK_CAPITAL as i32,
+            VK_ESCAPE as i32,
+            VK_SPACE as i32,
+            VK_F1 as i32,
+            VK_F12 as i32,
+            VK_LSHIFT as i32,
+            VK_RCONTROL as i32,
+        ];
+
+        for vk in test_vks {
+            let name = RawInputHandler::vk_to_key_name(vk);
+            let vk_back = RawInputHandler::key_name_to_vk(&name);
+            assert_eq!(vk_back, Some(vk), "Roundtrip failed for VK {}", vk);
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_device_map_initialization() {
+        // Test device map initialization
+        let config = Config::new();
+        let handler = RawInputHandler::new(config);
+        
+        // Device map should be initialized (may be empty if no devices connected)
+        // Just check that it's created without panicking
+        assert!(handler.device_map.len() >= 0);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_parse_vid_pid_valid() {
+        // Test VID/PID parsing from device name
+        let device_name = "\\\\?\\HID#VID_04FE&PID_0021#6&2a7e5d7&0&0000#{884b96c3-56ef-11d1-bc8c-00a0c91405dd}";
+        let result = RawInputHandler::parse_vid_pid(device_name);
+        assert_eq!(result, Some((0x04FE, 0x0021)));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_parse_vid_pid_lowercase() {
+        // Test VID/PID parsing with lowercase
+        let device_name = "\\\\?\\hid#vid_1234&pid_5678#test";
+        let result = RawInputHandler::parse_vid_pid(device_name);
+        assert_eq!(result, Some((0x1234, 0x5678)));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_parse_vid_pid_invalid() {
+        // Test VID/PID parsing with invalid format
+        let device_name = "Invalid device name";
+        let result = RawInputHandler::parse_vid_pid(device_name);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_process_key_event_remap() {
+        // Test key event processing with Remap mode
+        let mut config = Config::new();
+        config.add_mapping("04FE:0021", "CapsLock".to_string(), "LCtrl".to_string(), MappingType::Remap);
+        
+        let result = config.process_key_event("04FE:0021", "CapsLock", true);
+        assert_eq!(result, Some("LCtrl".to_string()));
+    }
+
+    #[test]
+    fn test_process_key_event_swap() {
+        // Test key event processing with Swap mode
+        let mut config = Config::new();
+        config.add_mapping("04FE:0021", "A".to_string(), "B".to_string(), MappingType::Swap);
+        
+        let result = config.process_key_event("04FE:0021", "A", true);
+        assert_eq!(result, Some("B".to_string()));
+    }
+
+    #[test]
+    fn test_process_key_event_disable() {
+        // Test key event processing with Disable mode
+        let mut config = Config::new();
+        config.add_mapping("04FE:0021", "CapsLock".to_string(), "".to_string(), MappingType::Disable);
+        
+        let result = config.process_key_event("04FE:0021", "CapsLock", true);
+        assert_eq!(result, Some("None".to_string()));
+    }
+
+    #[test]
+    fn test_process_key_event_no_mapping() {
+        // Test key event processing with no mapping
+        let config = Config::new();
+        
+        let result = config.process_key_event("04FE:0021", "A", true);
+        assert_eq!(result, Some("A".to_string()));
+    }
+
+    #[test]
+    fn test_process_key_event_different_device() {
+        // Test key event processing with different device
+        let mut config = Config::new();
+        config.add_mapping("04FE:0021", "CapsLock".to_string(), "LCtrl".to_string(), MappingType::Remap);
+        
+        // Different device should not apply mapping
+        let result = config.process_key_event("1234:5678", "CapsLock", true);
+        assert_eq!(result, Some("CapsLock".to_string()));
+    }
 }
