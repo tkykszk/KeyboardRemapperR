@@ -1,4 +1,19 @@
 use clap::{Parser, Subcommand};
+
+#[cfg(target_os = "windows")]
+use windows_service::{
+    define_windows_service,
+    service::{
+        ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState,
+        ServiceStatus, ServiceType,
+    },
+    service_control_handler::{self, ServiceControlHandlerResult},
+    service_dispatcher,
+};
+#[cfg(target_os = "windows")]
+use std::ffi::OsString;
+#[cfg(target_os = "windows")]
+use std::time::Duration;
 use serde::{Deserialize, Serialize};
 // use std::collections::HashMap; // Unused for now
 use std::fs;
@@ -833,7 +848,103 @@ fn send_key(key_name: &str, is_down: bool) -> Result<(), String> {
     }
 }
 
+#[cfg(target_os = "windows")]
+define_windows_service!(ffi_service_main, keyboard_remapper_service_main);
+
+#[cfg(target_os = "windows")]
+fn keyboard_remapper_service_main(_arguments: Vec<OsString>) {
+    if let Err(e) = run_service() {
+        // Log error (will be implemented in Task 4.4)
+        eprintln!("Service error: {}", e);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn run_service() -> Result<(), Box<dyn std::error::Error>> {
+    use std::sync::mpsc;
+    
+    let (shutdown_tx, shutdown_rx) = mpsc::channel();
+
+    let event_handler = move |control_event| -> ServiceControlHandlerResult {
+        match control_event {
+            ServiceControl::Stop => {
+                shutdown_tx.send(()).unwrap();
+                ServiceControlHandlerResult::NoError
+            }
+            ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
+            _ => ServiceControlHandlerResult::NotImplemented,
+        }
+    };
+
+    let status_handle = service_control_handler::register("KeyboardRemapperR", event_handler)?;
+
+    // Tell Windows that service is running
+    status_handle.set_service_status(ServiceStatus {
+        service_type: ServiceType::OWN_PROCESS,
+        current_state: ServiceState::Running,
+        controls_accepted: ServiceControlAccept::STOP,
+        exit_code: ServiceExitCode::Win32(0),
+        checkpoint: 0,
+        wait_hint: Duration::default(),
+        process_id: None,
+    })?;
+
+    // Run the main loop
+    run_main_loop(shutdown_rx)?;
+
+    // Tell Windows that service is stopped
+    status_handle.set_service_status(ServiceStatus {
+        service_type: ServiceType::OWN_PROCESS,
+        current_state: ServiceState::Stopped,
+        controls_accepted: ServiceControlAccept::empty(),
+        exit_code: ServiceExitCode::Win32(0),
+        checkpoint: 0,
+        wait_hint: Duration::default(),
+        process_id: None,
+    })?;
+
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn run_main_loop(shutdown_rx: std::sync::mpsc::Receiver<()>) -> Result<(), Box<dyn std::error::Error>> {
+    let config = load_config_or_default();
+    
+    // Install keyboard hook
+    unsafe { install_keyboard_hook()? };
+    
+    // Run message loop in a separate thread
+    let handle = std::thread::spawn(move || {
+        unsafe { RawInputHandler::run_message_loop(config) }
+    });
+    
+    // Wait for shutdown signal
+    shutdown_rx.recv()?;
+    
+    // Cleanup
+    unsafe { uninstall_keyboard_hook(); }
+    
+    // Wait for message loop to finish
+    handle.join().unwrap()?;
+    
+    Ok(())
+}
+
 fn main() {
+    #[cfg(target_os = "windows")]
+    {
+        // Check if running as a service
+        if std::env::args().any(|arg| arg == "--service") {
+            // Run as Windows service
+            if let Err(e) = service_dispatcher::start("KeyboardRemapperR", ffi_service_main) {
+                eprintln!("Service dispatcher error: {}", e);
+                std::process::exit(1);
+            }
+            return;
+        }
+    }
+    
+    // Run as console application
     let cli = Cli::parse();
     let mut config = load_config_or_default();
 
