@@ -29,18 +29,31 @@ use winapi::um::winuser::{
     RegisterClassW, CreateWindowExW, DefWindowProcW, GetMessageW, TranslateMessage,
     DispatchMessageW, PostQuitMessage, WM_INPUT, WM_DESTROY, WNDCLASSW, MSG,
     CW_USEDEFAULT, WS_OVERLAPPEDWINDOW,
+    // Phase 3: Low-level keyboard hook and SendInput
+    SetWindowsHookExW, UnhookWindowsHookEx, CallNextHookEx, SendInput,
+    WH_KEYBOARD_LL, KBDLLHOOKSTRUCT, INPUT, INPUT_KEYBOARD, KEYBDINPUT,
+    KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE,
 };
 #[cfg(target_os = "windows")]
 use winapi::um::libloaderapi::GetModuleHandleW;
 #[cfg(target_os = "windows")]
 use winapi::shared::minwindef::{LRESULT, WPARAM};
 #[cfg(target_os = "windows")]
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 #[cfg(target_os = "windows")]
 use std::sync::{Arc, Mutex};
 
 #[cfg(target_os = "windows")]
 static mut GLOBAL_HANDLER: Option<Arc<Mutex<RawInputHandler>>> = None;
+
+#[cfg(target_os = "windows")]
+static mut KEYBOARD_HOOK: Option<winapi::shared::windef::HHOOK> = None;
+
+#[cfg(target_os = "windows")]
+static mut SUPPRESSED_KEYS: Option<std::collections::HashSet<u16>> = None;
+
+#[cfg(target_os = "windows")]
+const INJECTED_KEY_MARKER: usize = 0x12345678;
 
 #[cfg(target_os = "windows")]
 unsafe extern "system" fn window_proc(
@@ -169,11 +182,26 @@ impl Config {
         if let Some(device) = self.devices.iter_mut().find(|d| d.device_id == device_id) {
             // Remove existing mapping for the same key
             device.mappings.retain(|m| m.from != from);
+            
+            // For Swap mode, also remove reverse mapping
+            if mapping_type == MappingType::Swap {
+                device.mappings.retain(|m| m.from != to);
+            }
+            
             device.mappings.push(KeyMapping {
-                from,
-                to,
-                mapping_type,
+                from: from.clone(),
+                to: to.clone(),
+                mapping_type: mapping_type.clone(),
             });
+            
+            // For Swap mode, automatically add reverse mapping
+            if mapping_type == MappingType::Swap {
+                device.mappings.push(KeyMapping {
+                    from: to,
+                    to: from,
+                    mapping_type,
+                });
+            }
         }
     }
 
@@ -545,7 +573,26 @@ impl RawInputHandler {
             let is_pressed = (flags & 0x01) == 0;
             
             // Process the key event
-            return self.config.process_key_event(device_id, &key_name, is_pressed);
+            if let Some(mapped_key) = self.config.process_key_event(device_id, &key_name, is_pressed) {
+                // Handle different mapping types
+                if mapped_key == "None" {
+                    // Disable mode: suppress the key, don't send anything
+                    add_suppressed_key(vkey);
+                    return Some(format!("Key {} disabled", key_name));
+                } else {
+                    // Remap or Swap mode: suppress original key and send mapped key
+                    add_suppressed_key(vkey);
+                    
+                    // Send the mapped key
+                    if let Err(e) = send_key(&mapped_key, is_pressed) {
+                        eprintln!("Failed to send key {}: {}", mapped_key, e);
+                    }
+                    
+                    return Some(format!("Key {} remapped to {}", key_name, mapped_key));
+                }
+            }
+            
+            None
         }
 
         None
@@ -631,6 +678,158 @@ impl RawInputHandler {
         }
 
         Ok(())
+    }
+}
+
+// ============================================================================
+// Phase 3: Key Input Suppression and Sending Functions
+// ============================================================================
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn keyboard_hook_proc(
+    n_code: i32,
+    w_param: WPARAM,
+    l_param: LPARAM,
+) -> LRESULT {
+    use winapi::um::winuser::{WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP};
+    
+    if n_code >= 0 {
+        let kb_struct = &*(l_param as *const KBDLLHOOKSTRUCT);
+        let vk_code = kb_struct.vkCode as u16;
+        let extra_info = kb_struct.dwExtraInfo;
+        
+        // Check if this is an injected key (sent by us)
+        if extra_info == INJECTED_KEY_MARKER {
+            // Pass through injected keys
+            return CallNextHookEx(std::ptr::null_mut(), n_code, w_param, l_param);
+        }
+        
+        // Check if this key should be suppressed
+        if let Some(suppressed) = &SUPPRESSED_KEYS {
+            if suppressed.contains(&vk_code) {
+                // Suppress the key by returning 1
+                return 1;
+            }
+        }
+    }
+    
+    CallNextHookEx(std::ptr::null_mut(), n_code, w_param, l_param)
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn install_keyboard_hook() -> Result<(), String> {
+    if KEYBOARD_HOOK.is_some() {
+        return Err("Keyboard hook already installed".to_string());
+    }
+    
+    // Initialize suppressed keys set if not already
+    if SUPPRESSED_KEYS.is_none() {
+        SUPPRESSED_KEYS = Some(std::collections::HashSet::new());
+    }
+    
+    let hook = SetWindowsHookExW(
+        WH_KEYBOARD_LL,
+        Some(keyboard_hook_proc),
+        GetModuleHandleW(std::ptr::null()),
+        0,
+    );
+    
+    if hook.is_null() {
+        return Err("Failed to install keyboard hook".to_string());
+    }
+    
+    KEYBOARD_HOOK = Some(hook);
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn uninstall_keyboard_hook() {
+    if let Some(hook) = KEYBOARD_HOOK.take() {
+        UnhookWindowsHookEx(hook);
+    }
+    SUPPRESSED_KEYS = None;
+}
+
+#[cfg(target_os = "windows")]
+fn add_suppressed_key(vk_code: u16) {
+    unsafe {
+        if let Some(suppressed) = &mut SUPPRESSED_KEYS {
+            suppressed.insert(vk_code);
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn remove_suppressed_key(vk_code: u16) {
+    unsafe {
+        if let Some(suppressed) = &mut SUPPRESSED_KEYS {
+            suppressed.remove(&vk_code);
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn should_suppress_key(vk_code: u16, _is_down: bool) -> bool {
+    unsafe {
+        if let Some(suppressed) = &SUPPRESSED_KEYS {
+            return suppressed.contains(&vk_code);
+        }
+    }
+    false
+}
+
+#[cfg(target_os = "windows")]
+fn is_extended_key(vk_code: u16) -> bool {
+    matches!(
+        vk_code,
+        0x21..=0x28 | // Page Up, Page Down, End, Home, Arrow keys
+        0x2D | 0x2E | // Insert, Delete
+        0x5B | 0x5C | 0x5D | // Left Win, Right Win, Apps
+        0xA3 | 0xA5 // Right Control, Right Alt
+    )
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn send_key_event(vk_code: u16, is_down: bool, is_extended: bool) -> Result<(), String> {
+    let mut input = INPUT {
+        type_: INPUT_KEYBOARD,
+        u: std::mem::zeroed(),
+    };
+    
+    let mut flags = 0;
+    if !is_down {
+        flags |= KEYEVENTF_KEYUP;
+    }
+    if is_extended {
+        flags |= KEYEVENTF_EXTENDEDKEY;
+    }
+    
+    *input.u.ki_mut() = KEYBDINPUT {
+        wVk: vk_code,
+        wScan: 0,
+        dwFlags: flags,
+        time: 0,
+        dwExtraInfo: INJECTED_KEY_MARKER,
+    };
+    
+    let result = SendInput(1, &mut input, std::mem::size_of::<INPUT>() as i32);
+    
+    if result == 0 {
+        Err("Failed to send key event".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn send_key(key_name: &str, is_down: bool) -> Result<(), String> {
+    let vk_code = RawInputHandler::key_name_to_vk(key_name)
+        .ok_or_else(|| format!("Unknown key name: {}", key_name))?;
+    
+    let is_extended = is_extended_key(vk_code as u16);
+    
+    unsafe {
+        send_key_event(vk_code as u16, is_down, is_extended)
     }
 }
 
@@ -729,13 +928,26 @@ fn main() {
             println!("Raw Input API integration is active.");
             println!("");
             
+            // Install keyboard hook for key suppression
+            match unsafe { install_keyboard_hook() } {
+                Ok(()) => {
+                    println!("Keyboard hook installed successfully.");
+                }
+                Err(e) => {
+                    eprintln!("Error installing keyboard hook: {}", e);
+                    std::process::exit(1);
+                }
+            }
+            
             // Run the message loop
             match unsafe { RawInputHandler::run_message_loop(config) } {
                 Ok(()) => {
                     println!("Service stopped successfully.");
+                    unsafe { uninstall_keyboard_hook(); }
                 }
                 Err(e) => {
                     eprintln!("Error running service: {}", e);
+                    unsafe { uninstall_keyboard_hook(); }
                     std::process::exit(1);
                 }
             }
