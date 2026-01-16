@@ -1237,13 +1237,21 @@ fn main() {
             {
                 info!("Starting keyboard remapping service..."); println!("Starting keyboard remapping service...");
                 
+                // Check if service is installed
                 if !is_service_installed() {
-                    eprintln!("Error: Service is not installed.");
-                    eprintln!("Please install the service first using:");
-                    eprintln!("  .\\scripts\\install_service.ps1");
-                    std::process::exit(1);
+                    println!("Service is not installed. Starting as console application...");
+                    println!("Press Ctrl+C to stop.");
+                    println!("");
+                    println!("To install as a Windows service, run:");
+                    println!("  .\\scripts\\install_service.ps1");
+                    println!("");
+                    
+                    // Run as console application
+                    run_main_loop();
+                    return;
                 }
                 
+                // Service is installed, start it
                 if is_service_running() {
                     println!("Service is already running.");
                     return;
@@ -1256,7 +1264,6 @@ fn main() {
                     }
                     Err(e) => {
                         eprintln!("Error starting service: {}", e);
-                        eprintln!("Note: This requires administrator privileges.");
                         std::process::exit(1);
                     }
                 }
