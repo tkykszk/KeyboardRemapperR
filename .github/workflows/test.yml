@@ -58,7 +58,14 @@ jobs:
       continue-on-error: true
     
     - name: Build project
-      run: cargo build --verbose
+      shell: pwsh
+      run: |
+        cargo build --verbose 2>&1 | Tee-Object -FilePath build_log.txt
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "Build failed with exit code $LASTEXITCODE"
+          Get-Content build_log.txt | Select-Object -Last 100
+          exit 1
+        }
     
     - name: Run unit tests
       run: cargo test --bins --verbose
@@ -71,6 +78,14 @@ jobs:
       shell: pwsh
       run: |
         .\scripts\run_tests.ps1 -GenerateReport -Verbose
+    
+    - name: Upload build log
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: build-log
+        path: build_log.txt
+        retention-days: 7
     
     - name: Upload test results
       uses: actions/upload-artifact@v4
