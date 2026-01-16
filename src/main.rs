@@ -1,4 +1,4 @@
-use log::info;
+
 use clap::{Parser, Subcommand};
 
 #[cfg(target_os = "windows")]

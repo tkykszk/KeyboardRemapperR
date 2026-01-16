@@ -61,7 +61,7 @@ jobs:
       run: cargo build --verbose
     
     - name: Run unit tests
-      run: cargo test --lib --verbose
+      run: cargo test --bins --verbose
     
     - name: Run integration tests
       run: cargo test --test e2e_tests --verbose
