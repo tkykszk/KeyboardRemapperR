@@ -74,22 +74,21 @@ jobs:
           Copy-Item "README.md" "$packageName\"
           
           # Create sample config
-          $configContent = @'
-{
-  "devices": {
-    "04FE:0021": {
-      "name": "HHKB Professional",
-      "mappings": [
-        {
-          "from": "CapsLock",
-          "to": "LCtrl"
-        }
-      ]
-    }
-  }
-}
-'@
-          $configContent | Out-File -FilePath "$packageName\config.sample.json" -Encoding utf8
+          @"
+          {
+            "devices": {
+              "04FE:0021": {
+                "name": "HHKB Professional",
+                "mappings": [
+                  {
+                    "from": "CapsLock",
+                    "to": "LCtrl"
+                  }
+                ]
+              }
+            }
+          }
+          "@ | Out-File -FilePath "$packageName\config.sample.json" -Encoding utf8
           
           # Create ZIP
           Compress-Archive -Path $packageName -DestinationPath "$packageName.zip"
