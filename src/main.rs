@@ -1,5 +1,6 @@
 
 use clap::{Parser, Subcommand};
+use log::info;
 
 #[cfg(target_os = "windows")]
 use windows_service::{
@@ -28,8 +29,8 @@ use winapi::shared::windef::HWND;
 use winapi::um::winuser::{
     GetRawInputData, GetRawInputDeviceInfoW, GetRawInputDeviceList, RegisterRawInputDevices,
     RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER, RIDEV_INPUTSINK, RID_DEVICE_INFO,
-    RID_DEVICE_INFO_HID, RID_DEVICE_INFO_KEYBOARD, RID_INPUT, RIDI_DEVICEINFO, RIDI_DEVICENAME,
-    RIM_TYPEHID, RIM_TYPEKEYBOARD, RIM_TYPEMOUSE,
+    RID_INPUT, RIDI_DEVICEINFO, RIDI_DEVICENAME,
+    RIM_TYPEKEYBOARD,
 };
 #[cfg(target_os = "windows")]
 use winapi::shared::ntdef::HANDLE;
@@ -48,14 +49,14 @@ use winapi::um::winuser::{
     // Phase 3: Low-level keyboard hook and SendInput
     SetWindowsHookExW, UnhookWindowsHookEx, CallNextHookEx, SendInput,
     WH_KEYBOARD_LL, KBDLLHOOKSTRUCT, INPUT, INPUT_KEYBOARD, KEYBDINPUT,
-    KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE,
+    KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP,
 };
 #[cfg(target_os = "windows")]
 use winapi::um::libloaderapi::GetModuleHandleW;
 #[cfg(target_os = "windows")]
 use winapi::shared::minwindef::{LRESULT, WPARAM};
 #[cfg(target_os = "windows")]
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 #[cfg(target_os = "windows")]
 use std::sync::{Arc, Mutex};
 
@@ -609,8 +610,6 @@ impl RawInputHandler {
                     return Some(format!("Key {} remapped to {}", key_name, mapped_key));
                 }
             }
-            
-            None
         }
 
         None
@@ -709,8 +708,6 @@ unsafe extern "system" fn keyboard_hook_proc(
     w_param: WPARAM,
     l_param: LPARAM,
 ) -> LRESULT {
-    use winapi::um::winuser::{WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP};
-    
     if n_code >= 0 {
         let kb_struct = &*(l_param as *const KBDLLHOOKSTRUCT);
         let vk_code = kb_struct.vkCode as u16;
@@ -1247,7 +1244,10 @@ fn main() {
                     println!("");
                     
                     // Run as console application
-                    run_main_loop();
+                    let (_shutdown_tx, shutdown_rx) = std::sync::mpsc::channel();
+                    if let Err(e) = run_main_loop(shutdown_rx) {
+                        eprintln!("Error running main loop: {}", e);
+                    }
                     return;
                 }
                 
@@ -1341,16 +1341,19 @@ fn main() {
 fn load_config_or_default() -> Config {
     let config_path = PathBuf::from("config.json");
     if config_path.exists() {
-        load_config(&config_path)
+        load_config(&config_path).unwrap_or_else(|_| Config::new())
     } else {
         Config::new()
     }
 }
 
-fn load_config(path: &PathBuf) -> Config {
+fn load_config(path: &PathBuf) -> Result<Config, String> {
     match fs::read_to_string(path) {
-        Ok(content) => serde_json::from_str(&content).unwrap_or_else(|_| Config::new()),
-        Err(_) => Config::new(),
+        Ok(content) => {
+            serde_json::from_str(&content)
+                .map_err(|e| format!("Failed to parse config: {}", e))
+        }
+        Err(e) => Err(format!("Failed to read config file: {}", e)),
     }
 }
 
