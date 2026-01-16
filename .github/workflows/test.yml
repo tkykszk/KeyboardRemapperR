@@ -79,6 +79,16 @@ jobs:
       run: |
         .\scripts\run_tests.ps1 -GenerateReport -Verbose
     
+    - name: Commit build log on failure
+      if: failure()
+      shell: pwsh
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        git add build_log.txt
+        git commit -m "debug: Add build log from failed run" || echo "No changes to commit"
+        git push origin HEAD:${{ github.ref_name }} || echo "Push failed"
+    
     - name: Upload build log
       uses: actions/upload-artifact@v4
       if: failure()
