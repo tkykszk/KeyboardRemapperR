@@ -63,7 +63,9 @@ jobs:
         cargo build --verbose 2>&1 | Tee-Object -FilePath build_log.txt
         if ($LASTEXITCODE -ne 0) {
           Write-Host "Build failed with exit code $LASTEXITCODE"
-          Get-Content build_log.txt | Select-Object -Last 100
+          Write-Host "===== Full Build Log ====="
+          Get-Content build_log.txt
+          Write-Host "===== End of Build Log ====="
           exit 1
         }
     
