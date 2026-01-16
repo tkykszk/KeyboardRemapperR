@@ -12,7 +12,7 @@ path = "src/main.rs"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-winapi = { version = "0.3", features = ["winuser", "winnt"] }
+winapi = { version = "0.3", features = ["winuser", "winnt", "libloaderapi", "minwindef", "windef", "ntdef"] }
 clap = { version = "4.4", features = ["derive"] }
 windows-service = "0.7"
 notify = "6.1"
