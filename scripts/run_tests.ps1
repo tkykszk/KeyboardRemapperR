@@ -78,7 +78,7 @@ function Run-UnitTests {
     $startTime = Get-Date
     
     # Rust の単体テストを実行
-    $output = cargo test --lib 2>&1
+    $output = cargo test --bins 2>&1
     
     $endTime = Get-Date
     $duration = ($endTime - $startTime).TotalSeconds
