@@ -86,13 +86,14 @@ function Run-UnitTests {
     $script:TestResults.UnitTests.Duration = $duration
     
     # テスト結果を解析
-    if ($output -match "test result: ok. (\d+) passed") {
+    $outputText = $output -join "`n"
+    if ($outputText -match "test result: ok. (\d+) passed") {
         $script:TestResults.UnitTests.Passed = [int]$Matches[1]
         $script:TestResults.UnitTests.Total = $script:TestResults.UnitTests.Passed
         Write-Success "単体テスト完了: $($script:TestResults.UnitTests.Passed)/$($script:TestResults.UnitTests.Total) 通過 (${duration}秒)"
         return $true
     }
-    elseif ($output -match "test result: FAILED. (\d+) passed; (\d+) failed") {
+    elseif ($outputText -match "test result: FAILED. (\d+) passed; (\d+) failed") {
         $script:TestResults.UnitTests.Passed = [int]$Matches[1]
         $script:TestResults.UnitTests.Failed = [int]$Matches[2]
         $script:TestResults.UnitTests.Total = $script:TestResults.UnitTests.Passed + $script:TestResults.UnitTests.Failed
@@ -132,13 +133,14 @@ function Run-IntegrationTests {
     $script:TestResults.IntegrationTests.Duration = $duration
     
     # テスト結果を解析
-    if ($output -match "test result: ok. (\d+) passed") {
+    $outputText = $output -join "`n"
+    if ($outputText -match "test result: ok. (\d+) passed") {
         $script:TestResults.IntegrationTests.Passed = [int]$Matches[1]
         $script:TestResults.IntegrationTests.Total = $script:TestResults.IntegrationTests.Passed
         Write-Success "統合テスト完了: $($script:TestResults.IntegrationTests.Passed)/$($script:TestResults.IntegrationTests.Total) 通過 (${duration}秒)"
         return $true
     }
-    elseif ($output -match "test result: FAILED. (\d+) passed; (\d+) failed") {
+    elseif ($outputText -match "test result: FAILED. (\d+) passed; (\d+) failed") {
         $script:TestResults.IntegrationTests.Passed = [int]$Matches[1]
         $script:TestResults.IntegrationTests.Failed = [int]$Matches[2]
         $script:TestResults.IntegrationTests.Total = $script:TestResults.IntegrationTests.Passed + $script:TestResults.IntegrationTests.Failed
@@ -175,7 +177,8 @@ function Run-PerformanceTests {
     $script:TestResults.PerformanceTests.Duration = $duration
     
     # テスト結果を解析
-    if ($output -match "Average latency: (\d+\.?\d*)ms") {
+    $outputText = $output -join "`n"
+    if ($outputText -match "Average latency: (\d+\.?\d*)ms") {
         $latency = [double]$Matches[1]
         $script:TestResults.PerformanceTests.Metrics["Latency"] = $latency
         
@@ -187,7 +190,7 @@ function Run-PerformanceTests {
         }
     }
     
-    if ($output -match "Success rate: (\d+\.?\d*)%") {
+    if ($outputText -match "Success rate: (\d+\.?\d*)%") {
         $successRate = [double]$Matches[1]
         $script:TestResults.PerformanceTests.Metrics["SuccessRate"] = $successRate
         
@@ -200,13 +203,13 @@ function Run-PerformanceTests {
     }
     
     # テスト結果を解析
-    if ($output -match "test result: ok. (\d+) passed") {
+    if ($outputText -match "test result: ok. (\d+) passed") {
         $script:TestResults.PerformanceTests.Passed = [int]$Matches[1]
         $script:TestResults.PerformanceTests.Total = $script:TestResults.PerformanceTests.Passed
         Write-Success "パフォーマンステスト完了: $($script:TestResults.PerformanceTests.Passed)/$($script:TestResults.PerformanceTests.Total) 通過 (${duration}秒)"
         return $true
     }
-    elseif ($output -match "test result: FAILED. (\d+) passed; (\d+) failed") {
+    elseif ($outputText -match "test result: FAILED. (\d+) passed; (\d+) failed") {
         $script:TestResults.PerformanceTests.Passed = [int]$Matches[1]
         $script:TestResults.PerformanceTests.Failed = [int]$Matches[2]
         $script:TestResults.PerformanceTests.Total = $script:TestResults.PerformanceTests.Passed + $script:TestResults.PerformanceTests.Failed
